@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LangChain Agent 智能助手</title>
+    <style>
+        /* ==================== 全局样式 ==================== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* ==================== 顶部导航栏 ==================== */
+        .header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .header h1 {
+            font-size: 1.3rem;
+            color: #333;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .header h1::before {
+            content: "🤖";
+            font-size: 1.5rem;
+        }
+
+        .config-section {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .session-badge {
+            font-size: 0.7rem;
+            color: #999;
+            background: #f0f0f0;
+            padding: 4px 8px;
+            border-radius: 10px;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* ==================== 表单控件样式 ==================== */
+        select, input[type="text"] {
+            padding: 6px 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        select:hover, input[type="text"]:hover {
+            border-color: #667eea;
+        }
+
+        select:focus, input[type="text"]:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .btn {
+            padding: 6px 16px;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-danger {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #ff5252;
+        }
+
+        /* ==================== 主聊天区域 ==================== */
+        .main-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            max-width: 1000px;
+            width: 100%;
+            margin: 20px auto;
+            padding: 0 20px;
+        }
+
+        .chat-container {
+            flex: 1;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* ==================== 聊天消息区域 ==================== */
+        .messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            display: flex;
+            gap: 12px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user {
+            flex-direction: row-reverse;
+        }
+
+        .message-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+            flex-shrink: 0;
+        }
+
+        .message.user .message-avatar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .message.assistant .message-avatar {
+            background: #f0f0f0;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 18px;
+            border-radius: 15px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .message.user .message-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+
+        .message.assistant .message-content {
+            background: #f5f5f5;
+            color: #333;
+            border-bottom-left-radius: 5px;
+        }
+
+        /* 流式输出时的闪烁光标 */
+        .streaming-cursor::after {
+            content: "▊";
+            animation: blink 1s step-end infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0; }
+        }
+
+        /* 思考状态栏 */
+        .thinking-indicator {
+            font-size: 0.8rem;
+            color: #888;
+            padding: 4px 12px;
+            margin-bottom: 4px;
+            background: #fffbe6;
+            border-radius: 10px;
+            display: inline-block;
+            animation: fadeIn 0.2s ease;
+        }
+
+        /* 欢迎消息 */
+        .welcome-message {
+            text-align: center;
+            padding: 40px 20px;
+            color: #666;
+        }
+
+        .welcome-message h2 {
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+            color: #333;
+        }
+
+        .welcome-message p {
+            margin: 10px 0;
+        }
+
+        .welcome-message ul {
+            text-align: left;
+            max-width: 350px;
+            margin: 20px auto;
+            list-style: none;
+        }
+
+        .welcome-message li {
+            padding: 5px 0;
+        }
+
+        .welcome-message li::before {
+            content: "✓ ";
+            color: #667eea;
+        }
+
+        /* ==================== 输入区域 ==================== */
+        .input-area {
+            padding: 15px 20px;
+            background: #f9f9f9;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+        }
+
+        .input-area input {
+            flex: 1;
+            padding: 12px 18px;
+            border: 2px solid #eee;
+            border-radius: 25px;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        .input-area input:focus {
+            border-color: #667eea;
+        }
+
+        .input-area .btn {
+            padding: 12px 28px;
+            border-radius: 25px;
+        }
+
+        /* ==================== 状态提示 ==================== */
+        .status {
+            padding: 8px 20px;
+            background: #fff3cd;
+            color: #856404;
+            text-align: center;
+            font-size: 0.85rem;
+        }
+
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        /* ==================== 响应式布局 ==================== */
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .config-section {
+                justify-content: center;
+            }
+
+            .message-content {
+                max-width: 85%;
+            }
+
+            .main-container {
+                padding: 10px;
+                margin: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部导航栏 -->
+    <header class="header">
+        <h1>LangChain Agent 智能助手</h1>
+
+        <div class="config-section">
+            <!-- 会话标识 -->
+            <span class="session-badge" id="sessionBadge" title="会话 ID">无会话</span>
+
+            <!-- 模型提供商选择 -->
+            <select id="providerSelect">
+                <option value="openai">OpenAI</option>
+                <option value="azure">Azure OpenAI</option>
+                <option value="deepseek">DeepSeek</option>
+                <option value="zhipu">智谱AI</option>
+                <option value="moonshot">Moonshot</option>
+                <option value="ollama">Ollama</option>
+                <option value="custom">自定义</option>
+            </select>
+
+            <!-- 模型名称输入 -->
+            <input type="text" id="modelInput" placeholder="模型名称" style="width: 130px;">
+
+            <!-- Agent类型选择 -->
+            <select id="agentTypeSelect">
+                <option value="conversational">对话型</option>
+                <option value="react">ReAct型</option>
+                <option value="functions">Functions型</option>
+            </select>
+
+            <!-- 应用配置按钮 -->
+            <button class="btn btn-primary" onclick="applyConfig()">应用配置</button>
+
+            <!-- 新建会话按钮 -->
+            <button class="btn btn-primary" onclick="newSession()" style="background: #4ecdc4;">新建会话</button>
+
+            <!-- 清空对话按钮 -->
+            <button class="btn btn-danger" onclick="resetChat()">清空记忆</button>
+        </div>
+    </header>
+
+    <!-- 主聊天区域 -->
+    <main class="main-container">
+        <div class="chat-container">
+            <!-- 消息显示区域 -->
+            <div class="messages" id="messages">
+                <!-- 欢迎消息 -->
+                <div class="welcome-message">
+                    <h2>👋 欢迎使用 LangChain Agent</h2>
+                    <p>一个基于LangChain的多工具智能助手</p>
+                    <ul>
+                        <li>支持多种LLM模型提供商</li>
+                        <li>内置计算器、搜索、天气等工具</li>
+                        <li>支持会话隔离与流式输出</li>
+                        <li>每个浏览器标签页独立会话</li>
+                    </ul>
+                    <p style="color: #999; font-size: 0.9rem;">请先在顶部配置您的模型，然后开始对话</p>
+                </div>
+            </div>
+
+            <!-- 状态提示区域 -->
+            <div class="status" id="status" style="display: none;"></div>
+
+            <!-- 输入区域 -->
+            <div class="input-area">
+                <input type="text" id="messageInput" placeholder="输入您的问题..."
+                       onkeypress="handleKeyPress(event)">
+                <button class="btn btn-primary" onclick="sendMessage()">发送</button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // ==================== 全局状态 ====================
+        let sessionId = null;
+        let isLoading = false;
+
+        // ==================== DOM元素引用 ====================
+        const messagesContainer = document.getElementById('messages');
+        const messageInput = document.getElementById('messageInput');
+        const statusDiv = document.getElementById('status');
+        const sessionBadge = document.getElementById('sessionBadge');
+        const providerSelect = document.getElementById('providerSelect');
+        const modelInput = document.getElementById('modelInput');
+        const agentTypeSelect = document.getElementById('agentTypeSelect');
+
+        // ==================== 初始化 ====================
+        document.addEventListener('DOMContentLoaded', () => {
+            loadConfig();
+        });
+
+        // ==================== 会话管理 ====================
+
+        function updateSessionBadge() {
+            if (sessionId) {
+                const short = sessionId.substring(0, 8);
+                sessionBadge.textContent = `会话: ${short}...`;
+                sessionBadge.title = `Session ID: ${sessionId}`;
+            } else {
+                sessionBadge.textContent = '无会话';
+                sessionBadge.title = '';
+            }
+        }
+
+        async function newSession() {
+            try {
+                const response = await fetch('/api/session/new');
+                const data = await response.json();
+                if (data.success) {
+                    sessionId = data.session_id;
+                    updateSessionBadge();
+                    // 清空消息
+                    messagesContainer.innerHTML = `
+                        <div class="welcome-message">
+                            <h2>✨ 新会话已创建</h2>
+                            <p>会话 ID: ${sessionId.substring(0, 8)}...</p>
+                            <p style="color: #999;">可以开始新的对话了</p>
+                        </div>
+                    `;
+                    showStatus('新会话已创建', 'success');
+                }
+            } catch (error) {
+                showStatus('创建会话失败: ' + error.message, 'error');
+            }
+        }
+
+        // ==================== 配置相关函数 ====================
+
+        async function loadConfig() {
+            try {
+                const response = await fetch('/api/config');
+                const data = await response.json();
+                providerSelect.value = data.provider;
+                modelInput.value = data.model || '';
+                agentTypeSelect.value = data.agent_type;
+            } catch (error) {
+                console.error('加载配置失败:', error);
+            }
+        }
+
+        async function applyConfig() {
+            const provider = providerSelect.value;
+            const model = modelInput.value.trim();
+            const agentType = agentTypeSelect.value;
+
+            showStatus('正在应用配置...', 'info');
+
+            try {
+                const response = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider: provider,
+                        model_name: model,
+                        agent_type: agentType,
+                        session_id: sessionId  // 更新当前会话
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    // 更新 session_id（配置变更会创建新会话）
+                    if (data.session_id) {
+                        sessionId = data.session_id;
+                        updateSessionBadge();
+                        // 清空消息
+                        messagesContainer.innerHTML = `
+                            <div class="welcome-message">
+                                <h2>⚙️ 配置已更新</h2>
+                                <p>${provider} / ${model || data.config.model} / ${agentType}</p>
+                                <p style="color: #999;">旧对话已清除，开始新对话吧</p>
+                            </div>
+                        `;
+                    }
+                    showStatus(`配置已更新: ${provider} / ${model || data.config.model} / ${agentType}`, 'success');
+                } else {
+                    showStatus('配置更新失败', 'error');
+                }
+            } catch (error) {
+                showStatus('配置更新失败: ' + error.message, 'error');
+            }
+        }
+
+        // ==================== 聊天相关函数 ====================
+
+        /**
+         * 发送消息（使用流式 SSE）
+         */
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message || isLoading) return;
+
+            // 清空输入框
+            messageInput.value = '';
+            isLoading = true;
+
+            // 添加用户消息
+            addMessage('user', message);
+
+            // 创建助手消息容器（用于流式追加）
+            const assistantMsg = createStreamingMessage();
+
+            // 思考状态显示
+            let thinkingDiv = null;
+
+            try {
+                const provider = providerSelect.value;
+                const model = modelInput.value.trim();
+                const agentType = agentTypeSelect.value;
+
+                const response = await fetch('/api/chat/stream', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message: message,
+                        session_id: sessionId,
+                        agent_type: agentType,
+                        provider: provider,
+                        model_name: model
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+
+                    // 解析 SSE 事件
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || '';  // 保留不完整的行
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const event = JSON.parse(line.substring(6));
+
+                                switch (event.type) {
+                                    case 'session':
+                                        // 接收服务端分配的 session_id
+                                        if (event.session_id) {
+                                            sessionId = event.session_id;
+                                            updateSessionBadge();
+                                        }
+                                        break;
+
+                                    case 'token':
+                                        // 追加 token 到助手消息
+                                        assistantMsg.contentDiv.textContent += event.content;
+                                        assistantMsg.contentDiv.classList.add('streaming-cursor');
+                                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                                        break;
+
+                                    case 'thinking':
+                                        // 显示思考/工具调用状态
+                                        if (!thinkingDiv) {
+                                            thinkingDiv = document.createElement('div');
+                                            thinkingDiv.className = 'thinking-indicator';
+                                            assistantMsg.messageDiv.insertBefore(
+                                                thinkingDiv,
+                                                assistantMsg.contentDiv
+                                            );
+                                        }
+                                        thinkingDiv.textContent = event.content;
+                                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                                        break;
+
+                                    case 'error':
+                                        assistantMsg.contentDiv.textContent += '\n\n❌ ' + event.content;
+                                        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                                        break;
+
+                                    case 'done':
+                                        // 流式完成
+                                        break;
+                                }
+                            } catch (e) {
+                                console.error('SSE 解析错误:', e, line);
+                            }
+                        }
+                    }
+                }
+
+                // 移除闪烁光标
+                assistantMsg.contentDiv.classList.remove('streaming-cursor');
+
+                // 如果没有收到任何 token，显示提示
+                if (!assistantMsg.contentDiv.textContent.trim()) {
+                    assistantMsg.contentDiv.textContent = '(收到空响应)';
+                }
+
+            } catch (error) {
+                console.error('流式请求失败，尝试非流式回退:', error);
+                // 回退到非流式请求
+                try {
+                    const fallbackResponse = await fetch('/api/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            message: message,
+                            session_id: sessionId,
+                            agent_type: agentTypeSelect.value,
+                            provider: providerSelect.value,
+                            model_name: modelInput.value.trim()
+                        })
+                    });
+
+                    const data = await fallbackResponse.json();
+
+                    if (data.success) {
+                        assistantMsg.contentDiv.textContent = data.response;
+                        if (data.session_id) {
+                            sessionId = data.session_id;
+                            updateSessionBadge();
+                        }
+                    } else {
+                        assistantMsg.contentDiv.textContent = '抱歉，发生了错误：' + (data.detail || '未知错误');
+                    }
+                } catch (fallbackError) {
+                    assistantMsg.contentDiv.textContent = '网络错误：' + error.message;
+                }
+            } finally {
+                isLoading = false;
+                assistantMsg.contentDiv.classList.remove('streaming-cursor');
+                if (thinkingDiv) {
+                    thinkingDiv.remove();
+                    thinkingDiv = null;
+                }
+            }
+        }
+
+        /**
+         * 创建流式消息容器
+         */
+        function createStreamingMessage() {
+            // 移除欢迎消息
+            const welcome = messagesContainer.querySelector('.welcome-message');
+            if (welcome) welcome.remove();
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = '🤖';
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(contentDiv);
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+            return { messageDiv, contentDiv, avatar };
+        }
+
+        /**
+         * 添加静态消息到聊天界面
+         */
+        function addMessage(role, content) {
+            const welcome = messagesContainer.querySelector('.welcome-message');
+            if (welcome) welcome.remove();
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = role === 'user' ? '👤' : '🤖';
+
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content';
+            contentDiv.textContent = content;
+
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(contentDiv);
+            messagesContainer.appendChild(messageDiv);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight;
+        }
+
+        /**
+         * 重置对话历史
+         */
+        async function resetChat() {
+            if (!sessionId) {
+                showStatus('请先创建或发送一条消息以建立会话', 'error');
+                return;
+            }
+
+            try {
+                await fetch('/api/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId })
+                });
+
+                messagesContainer.innerHTML = `
+                    <div class="welcome-message">
+                        <h2>🧹 对话记忆已清空</h2>
+                        <p>会话 ${sessionId.substring(0, 8)}... 的记忆已重置</p>
+                        <p style="color: #999;">可以继续对话，但之前的上下文已清除</p>
+                    </div>
+                `;
+                showStatus('对话记忆已清空（会话保留）', 'success');
+            } catch (error) {
+                showStatus('清空对话失败: ' + error.message, 'error');
+            }
+        }
+
+        /**
+         * 显示状态提示
+         */
+        function showStatus(message, type = 'info') {
+            statusDiv.textContent = message;
+            statusDiv.className = 'status ' + type;
+            statusDiv.style.display = 'block';
+
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        /**
+         * 处理键盘事件
+         */
+        function handleKeyPress(event) {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                event.preventDefault();
+                sendMessage();
+            }
+        }
+    </script>
+</body>
+</html>

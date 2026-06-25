@@ -1,0 +1,53 @@
+# ============================================================
+# .dockerignore — 排除不需要打入镜像的文件
+# ============================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+*.egg
+
+# 开发文件
+.git/
+.gitignore
+*.md
+!README.md
+LICENSE
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 环境（.env 在运行时挂载或通过 env_file 注入）
+.env
+.env.local
+.env.*.local
+
+# 测试 & CI
+tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 日志 & 临时文件
+*.log
+*.tmp
+*.temp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+deploy/Dockerfile
+deploy/docker-compose.yml
+.dockerignore

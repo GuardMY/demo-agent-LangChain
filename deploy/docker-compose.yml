@@ -1,0 +1,111 @@
+# ============================================================
+# LangChain Agent 智能助手 - Docker Compose
+#
+# 使用方法:
+#   启动:    docker-compose up -d
+#   停止:    docker-compose down
+#   查看日志: docker-compose logs -f app
+#   重建:    docker-compose up -d --build
+# ============================================================
+
+version: "3.8"
+
+services:
+  # ==================== 主应用服务 ====================
+  app:
+    build:
+      context: ..
+      target: production
+      dockerfile: deploy/Dockerfile
+    container_name: langchain-agent-app
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    env_file:
+      - ../.env
+    environment:
+      # ---- 服务配置 ----
+      - ENV=${ENV:-production}
+      # ---- 安全配置 ----
+      - APP_API_KEY=${APP_API_KEY:-}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-*}
+      - RATE_LIMIT_ENABLED=${RATE_LIMIT_ENABLED:-true}
+      - RATE_LIMIT_GLOBAL=${RATE_LIMIT_GLOBAL:-60/minute}
+      - RATE_LIMIT_CHAT=${RATE_LIMIT_CHAT:-10/minute}
+      - RATE_LIMIT_STREAM=${RATE_LIMIT_STREAM:-5/minute}
+      - MAX_MESSAGE_LENGTH=${MAX_MESSAGE_LENGTH:-10000}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    # 资源限制
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 128M
+          cpus: "0.25"
+    # 日志轮转
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ==================== Redis（速率限制 + 缓存） ====================
+  redis:
+    image: redis:7-alpine
+    container_name: langchain-agent-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.25"
+    # 仅内网访问
+    command: >
+      redis-server
+      --save 60 1
+      --loglevel warning
+      --maxmemory 64mb
+      --maxmemory-policy allkeys-lru
+
+  # ==================== 开发模式（按需启用） ====================
+  app-dev:
+    build:
+      context: ..
+      target: development
+      dockerfile: deploy/Dockerfile
+    container_name: langchain-agent-dev
+    ports:
+      - "${DEV_PORT:-8080}:8000"
+    env_file:
+      - ../.env
+    environment:
+      - ENV=development
+      - APP_API_KEY=${APP_API_KEY:-}
+    volumes:
+      # 挂载源码目录，支持热重载
+      - ..:/app
+      - /app/__pycache__
+    profiles:
+      - dev
+    restart: unless-stopped
+    command: uvicorn web_app:app --host 0.0.0.0 --port 8000 --reload
+
+volumes:
+  redis_data:
+    driver: local
